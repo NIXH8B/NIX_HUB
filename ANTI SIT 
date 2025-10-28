@@ -1,2 +1,200 @@
-Brook haven Anti Sit 
-// Hod7Yu
+--// 🧠 Anti Sit System v2.2
+--// Autor: Yumeko and HoadFer
+--// LocalScript -> StarterPlayerScripts
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local StarterGui = game:GetService("StarterGui")
+
+local player = Players.LocalPlayer
+local gui = player:WaitForChild("PlayerGui")
+
+--// Cria GUI principal
+local screenGui = gui:FindFirstChild("AntiSitGUI") or Instance.new("ScreenGui")
+screenGui.Name = "AntiSitGUI"
+screenGui.ResetOnSpawn = false
+screenGui.IgnoreGuiInset = true
+screenGui.Parent = gui
+
+--// Cria botão Anti Sit
+local btn = Instance.new("ImageButton")
+btn.Name = "AntiSitButton"
+btn.Size = UDim2.new(0, 60, 0, 60)
+btn.Position = UDim2.new(0.8, 0, 0.8, 0)
+btn.AnchorPoint = Vector2.new(0.5, 0.5)
+btn.BackgroundTransparency = 1
+btn.Image = "rbxasset://textures/ui/mouseLock_off@2x.png"
+btn.Visible = true -- mude para UserInputService.TouchEnabled se quiser só no mobile
+btn.Parent = screenGui
+
+--// Estado e variáveis
+local antiSitEnabled = false
+local humanoid = nil
+local antiSitLoop = nil
+
+--// Atualiza aparência do botão
+local function updateBtnVisual()
+	if antiSitEnabled then
+		btn.ImageColor3 = Color3.fromRGB(0, 255, 0)
+	else
+		btn.ImageColor3 = Color3.fromRGB(255, 255, 255)
+	end
+end
+
+--// Efeito "pulse" ao clicar
+local function pulse()
+	local grow = TweenService:Create(btn, TweenInfo.new(0.12, Enum.EasingStyle.Quad), {Size = UDim2.new(0, 68, 0, 68)})
+	local shrink = TweenService:Create(btn, TweenInfo.new(0.12, Enum.EasingStyle.Quad), {Size = UDim2.new(0, 60, 0, 60)})
+	grow:Play()
+	grow.Completed:Connect(function()
+		shrink:Play()
+	end)
+end
+
+--// Notificação visual
+local function notify(msg)
+	pcall(function()
+		StarterGui:SetCore("SendNotification", {
+			Title = "Anti Sit";
+			Text = msg;
+			Duration = 2;
+		})
+	end)
+end
+
+--// Bloqueia ou libera todos os Seats e VehicleSeats
+local function setSeatsEnabled(enabled)
+	for _, seat in pairs(workspace:GetDescendants()) do
+		if seat:IsA("Seat") or seat:IsA("VehicleSeat") then
+			pcall(function()
+				seat.Disabled = not enabled
+			end)
+		end
+	end
+end
+
+--// Monitora novos objetos no jogo
+workspace.DescendantAdded:Connect(function(desc)
+	if antiSitEnabled and (desc:IsA("Seat") or desc:IsA("VehicleSeat")) then
+		pcall(function() desc.Disabled = true end)
+	end
+end)
+
+--// Força o humanoid a não sentar
+local function startPreventLoop(hum)
+	if antiSitLoop then
+		antiSitLoop:Disconnect()
+		antiSitLoop = nil
+	end
+
+	antiSitLoop = hum.StateChanged:Connect(function(_, newState)
+		if antiSitEnabled and newState == Enum.HumanoidStateType.Seated then
+			pcall(function()
+				hum.Sit = false
+				hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+			end)
+		end
+	end)
+end
+
+--// Atualiza humanoid ao spawnar
+local function onCharacterAdded(char)
+	if antiSitLoop then
+		antiSitLoop:Disconnect()
+		antiSitLoop = nil
+	end
+
+	humanoid = char:WaitForChild("Humanoid", 5)
+	if humanoid then
+		startPreventLoop(humanoid)
+	end
+end
+
+if player.Character then
+	onCharacterAdded(player.Character)
+end
+player.CharacterAdded:Connect(onCharacterAdded)
+
+--// Ativa/Desativa Anti Sit
+local function toggleAntiSit()
+	pulse()
+	antiSitEnabled = not antiSitEnabled
+	updateBtnVisual()
+	setSeatsEnabled(not antiSitEnabled)
+
+	if antiSitEnabled and humanoid then
+		for i = 1, 6 do
+			pcall(function()
+				humanoid.Sit = false
+				humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+			end)
+			wait(0.05)
+		end
+	end
+
+	if antiSitEnabled then
+		notify("Ativado ✅ — você não pode sentar.")
+	else
+		notify("Desativado ❌ — você pode sentar novamente.")
+	end
+end
+
+--// Clique do botão
+btn.MouseButton1Click:Connect(toggleAntiSit)
+
+--// Atalho de teclado (tecla N)
+UserInputService.InputBegan:Connect(function(input, gpe)
+	if not gpe and input.KeyCode == Enum.KeyCode.N then
+		toggleAntiSit()
+	end
+end)
+
+--// Sistema de arraste suave e corrigido
+local dragging = false
+local dragStart = nil
+local startPos = nil
+local dragInput = nil
+
+local function update(input)
+	if dragging then
+		local delta = input.Position - dragStart
+		local viewportSize = workspace.CurrentCamera.ViewportSize
+		local btnSize = btn.AbsoluteSize
+
+		local newX = math.clamp(startPos.X.Offset + delta.X, 0, viewportSize.X - btnSize.X)
+		local newY = math.clamp(startPos.Y.Offset + delta.Y, 0, viewportSize.Y - btnSize.Y)
+
+		btn.Position = UDim2.new(0, newX, 0, newY)
+	end
+end
+
+btn.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = true
+		dragStart = input.Position
+		startPos = btn.Position
+
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+			end
+		end)
+	end
+end)
+
+btn.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+		dragInput = input
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if input == dragInput then
+		update(input)
+	end
+end)
+
+--// Inicialização
+updateBtnVisual()
+print("[AntiSit v2.2] Sistema carregado com sucesso!")
